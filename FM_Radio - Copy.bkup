@@ -1,0 +1,173 @@
+#include <ESP8266WiFi.h>
+#include <Wire.h>
+#include <ConfigManager.h>
+#include <LiquidCrystal_I2C.h>
+#include <ar1010lib.h>
+
+
+const char* ssid = "ESP-Test";//your mobile hotspot name
+const char* password = "esp_password";
+
+// Global Instances
+ConfigManager configManager;
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Requires the address
+WiFiServer server(80);
+AR1010 radio = AR1010();
+
+
+// Function Prototypes
+void startLCD();
+void startConfigManager();
+void startAR1010();
+
+
+void setup() {
+
+  // The begin call takes the width and height. This
+  // Should match the number provided to the constructor.
+  lcd.begin(16, 2);
+  lcd.init();
+
+  lcd.clear();
+
+  // Turn on the backlight.
+  lcd.backlight();
+
+  // Move the cursor characters to the right and
+  // zero characters down (line 1).
+  lcd.setCursor(0, 0);
+
+  // Print HELLO to the screen, starting at 5,0.
+  lcd.print("Connecting to:");
+
+  // Move the cursor to the next line and print
+  // WORLD.
+  lcd.setCursor(0, 1);
+  lcd.print(ssid);
+
+  Serial.begin(115200);
+  delay(10);
+  // prepare GPIO
+  pinMode(BUILTIN_LED, OUTPUT);
+  digitalWrite(BUILTIN_LED, 0);
+  Serial.println();
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+
+  // Start the server
+  server.begin();
+  Serial.println("Server started");
+
+  // Print the IP address
+  Serial.println(WiFi.localIP());
+
+  TurnOnLCD();
+
+}
+
+void loop() {
+  // Check if a client has connected
+  WiFiClient client = server.available();
+  if (!client) {
+    return;
+  }
+
+  // Wait until the client sends some data
+  Serial.println("new client");
+  while (!client.available()) {
+    delay(1);
+  }
+
+  // Read the first line of the request
+  String req = client.readStringUntil('\r');
+  Serial.println(req);
+  client.flush();
+
+  // Match the request
+  int val;
+  if (req.indexOf("/gpio/0") != -1)
+    val = 0;
+  else if (req.indexOf("/gpio/1") != -1)
+    val = 1;
+  else if (req.indexOf("/Bean") != -1)
+  {
+    lcd.setCursor(0, 0);
+    lcd.print("Bean? Bean               ");
+  }
+  else if (req.indexOf("/freq/") != -1 && req.indexOf("/freqend/") != -1)
+  {
+    String freq = req.substring(req.indexOf("/freq/") + 6,  req.indexOf("/freqend"));
+    lcd.clear();
+    Serial.println(freq);
+    lcd.setCursor(0, 0);
+    lcd.print(freq);
+  }
+  else {
+    Serial.println("invalid request");
+    client.stop();
+    return;
+  }
+
+  // Set GPI0 according to the request
+  digitalWrite(BUILTIN_LED, val);
+
+  client.flush();
+
+  // Prepare the response
+  String s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>\r\nGPIO is now ";
+  s += (val) ? "high" : "low";
+  s += "</html>\n";
+
+  // Send the response to the client
+  client.print(s);
+  delay(1);
+  Serial.println("Client disonnected");
+
+  // The client will actually be disconnected
+  // when the function returns and 'client' object is detroyed
+}
+
+// Turns on LCD and Displays Hello World
+void startLCD();
+{
+  // Move the cursor characters to the right and
+  // zero characters down (line 1).
+  lcd.setCursor(0, 0);
+
+  lcd.clear();
+
+  // Print HELLO to the screen, starting at 5,0.
+  lcd.print("Local IP:");
+
+  // Move the cursor to the next line and print
+  // WORLD.
+  lcd.setCursor(0, 1);
+  lcd.print(WiFi.localIP());
+}
+
+// The Config Manager used to connect the Radio to AP without saving the SSID and Password to firmware
+void startConfigManager()
+{
+  configManager.setAPName("Demo");
+  configManager.setAPFilename("/index.html");
+  configManager.addParameter("name", config.name, 20);
+  configManager.addParameter("enabled", &config.enabled);
+  configManager.addParameter("hour", &config.hour);
+  configManager.addParameter("password", config.password, 20, set);
+  configManager.addParameter("version", &meta.version, get);
+  configManager.begin(config);
+}
+
+// Starts the AR1010 I2C Communications
+void startAR1010()
+{
+
+}
